@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NeuroForge Oscilloscope & Phase-Space Canvas</title>
+  <style>
+    body { margin: 0; background: #080b11; color: #4ade80; font-family: ui-monospace, monospace; overflow: hidden; }
+    #header { padding: 10px 20px; background: #0f172a; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; }
+    #controls { display: flex; gap: 10px; align-items: center; }
+    select { background: #1e293b; color: #38bdf8; border: 1px solid #334155; padding: 4px 8px; border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer; outline: none; }
+    #container { display: flex; width: 100vw; height: calc(100vh - 42px); }
+    #scope { width: 68vw; height: 100%; border-right: 1px solid #1e293b; }
+    #orbit { width: 32vw; height: 100%; background: #05070a; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <span>NEUROFORGE TELEMETRY OSCILLOSCOPE (16-CH IIR · 1000 Hz)</span>
+    <div id="controls">
+      <span id="pqcBadge" style="background:#064e3b;color:#34d399;padding:2px 6px;border-radius:3px;font-size:10px;">PQC: SEALED</span>
+      <label for="modeSelect" style="color: #94a3b8; font-size: 11px;">ATTRACTOR:</label>
+      <select id="modeSelect">
+        <option value="limit_cycle">Phase Space [x vs ẋ]</option>
+        <option value="lissajous">Cross-Channel [CH 01 vs CH 02]</option>
+        <option value="kerr">Kerr Relativistic Orbit [r vs pᵣ]</option>
+      </select>
+      <span id="status" style="margin-left: 6px;">CONNECTING...</span>
+    </div>
+  </div>
+  <div id="container">
+    <canvas id="scope"></canvas>
+    <canvas id="orbit"></canvas>
+  </div>
+
+  <script>
+    const scopeCanvas = document.getElementById("scope");
+    const orbitCanvas = document.getElementById("orbit");
+    const sCtx = scopeCanvas.getContext("2d");
+    const oCtx = orbitCanvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+    const modeSelect = document.getElementById("modeSelect");
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      scopeCanvas.width = (window.innerWidth * 0.68) * dpr;
+      scopeCanvas.height = (window.innerHeight - 42) * dpr;
+      orbitCanvas.width = (window.innerWidth * 0.32) * dpr;
+      orbitCanvas.height = (window.innerHeight - 42) * dpr;
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    const BUFFER_SIZE = 600;
+    const channelHistory = Array.from({ length: 16 }, () => new Array(BUFFER_SIZE).fill(0));
+    const orbitHistory = [];
+    const MAX_ORBIT_POINTS = 500;
+
+    const ws = new WebSocket("ws://localhost:8766");
+    ws.onopen = () => { statusEl.textContent = "CONNECTED"; statusEl.style.color = "#4ade80"; };
+    ws.onclose = () => { statusEl.textContent = "DISCONNECTED"; statusEl.style.color = "#f87171"; };
+    ws.onerror = () => { statusEl.textContent = "ERR"; statusEl.style.color = "#f87171"; };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      for (let i = 0; i < 16; i++) {
+        channelHistory[i].push(data.channels[i]);
+        if (channelHistory[i].length > BUFFER_SIZE) channelHistory[i].shift();
+      }
+
+      const mode = modeSelect.value;
+      let px = 0, py = 0;
+
+      if (mode === "limit_cycle") {
+        const ch1 = channelHistory[0];
+        const n = ch1.length;
+        px = ch1[n - 1];
+        py = (ch1[n - 1] - ch1[n - 3 >= 0 ? n - 3 : 0]) * 8.0;
+      } else if (mode === "lissajous") {
+        px = channelHistory[0][channelHistory[0].length - 1];
+        py = channelHistory[1][channelHistory[1].length - 1];
+      } else if (mode === "kerr" && data.kerr_orbit) {
+        px = (data.kerr_orbit.r - 6.0) * 0.7;
+        py = data.kerr_orbit.p_r * 2.8;
+      }
+
+      orbitHistory.push({ x: px, y: py });
+      if (orbitHistory.length > MAX_ORBIT_POINTS) orbitHistory.shift();
+    };
+
+    function render() {
+      const dpr = window.devicePixelRatio || 1;
+
+      // 1. Time-Series Lanes
+      sCtx.fillStyle = "#080b11";
+      sCtx.fillRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+      const chHeight = scopeCanvas.height / 16;
+      const stepX = scopeCanvas.width / BUFFER_SIZE;
+
+      for (let ch = 0; ch < 16; ch++) {
+        const centerY = chHeight * ch + chHeight / 2;
+
+        sCtx.strokeStyle = "#1e293b";
+        sCtx.lineWidth = 1 * dpr;
+        sCtx.beginPath();
+        sCtx.moveTo(0, centerY);
+        sCtx.lineTo(scopeCanvas.width, centerY);
+        sCtx.stroke();
+
+        sCtx.fillStyle = "#475569";
+        sCtx.font = `${10 * dpr}px ui-monospace, monospace`;
+        sCtx.fillText(`CH ${(ch + 1).toString().padStart(2, "0")}`, 14 * dpr, centerY - 6 * dpr);
+
+        sCtx.strokeStyle = `hsl(${(ch * 22) % 360}, 85%, 62%)`;
+        sCtx.lineWidth = 1.5 * dpr;
+        sCtx.beginPath();
+        for (let i = 0; i < channelHistory[ch].length; i++) {
+          const x = i * stepX;
+          const y = centerY - (channelHistory[ch][i] * (chHeight * 0.35));
+          if (i === 0) sCtx.moveTo(x, y);
+          else sCtx.lineTo(x, y);
+        }
+        sCtx.stroke();
+      }
+
+      // 2. Phase-Space Attractor Viewport
+      oCtx.fillStyle = "#05070a";
+      oCtx.fillRect(0, 0, orbitCanvas.width, orbitCanvas.height);
+
+      const oCenterX = orbitCanvas.width / 2;
+      const oCenterY = orbitCanvas.height / 2;
+      const minDim = Math.min(orbitCanvas.width, orbitCanvas.height);
+      const scale = minDim * 0.28;
+
+      oCtx.strokeStyle = "#1e293b";
+      oCtx.lineWidth = 1 * dpr;
+      oCtx.beginPath();
+      oCtx.moveTo(oCenterX, 0); oCtx.lineTo(oCenterX, orbitCanvas.height);
+      oCtx.moveTo(0, oCenterY); oCtx.lineTo(orbitCanvas.width, oCenterY);
+      oCtx.arc(oCenterX, oCenterY, scale * 0.5, 0, Math.PI * 2);
+      oCtx.arc(oCenterX, oCenterY, scale, 0, Math.PI * 2);
+      oCtx.stroke();
+
+      oCtx.fillStyle = "#64748b";
+      oCtx.font = `${11 * dpr}px ui-monospace, monospace`;
+      const modeText = modeSelect.options[modeSelect.selectedIndex].text;
+      oCtx.fillText(modeText.toUpperCase(), 16 * dpr, 24 * dpr);
+
+      if (orbitHistory.length > 2) {
+        for (let i = 1; i < orbitHistory.length; i++) {
+          const alpha = Math.pow(i / orbitHistory.length, 1.8);
+          oCtx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+          oCtx.lineWidth = (0.8 + 1.6 * (i / orbitHistory.length)) * dpr;
+
+          oCtx.beginPath();
+          const x0 = oCenterX + orbitHistory[i - 1].x * scale;
+          const y0 = oCenterY - orbitHistory[i - 1].y * scale;
+          const x1 = oCenterX + orbitHistory[i].x * scale;
+          const y1 = oCenterY - orbitHistory[i].y * scale;
+          oCtx.moveTo(x0, y0);
+          oCtx.lineTo(x1, y1);
+          oCtx.stroke();
+        }
+
+        const head = orbitHistory[orbitHistory.length - 1];
+        oCtx.fillStyle = "#38bdf8";
+        oCtx.beginPath();
+        oCtx.arc(oCenterX + head.x * scale, oCenterY - head.y * scale, 3.5 * dpr, 0, Math.PI * 2);
+        oCtx.fill();
+      }
+
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
