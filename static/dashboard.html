@@ -282,6 +282,8 @@ function connectWS() {
     try {
       const data = JSON.parse(event.data);
       if (data.channels) ingestFrame(data.channels);
+      if (data.bands) updateLiveBands(data.bands);
+      if (data.actuator && data.actuator.active) logActuation(data.actuator);
       if (data.attractor) ingestAttractor(data.attractor.x, data.attractor.v);
     } catch(e) {}
   };
@@ -296,6 +298,30 @@ function connectWS() {
   };
 }
 connectWS();
+
+
+function updateLiveBands(b) {
+  document.getElementById("bar-delta").style.width = b.delta + "%";
+  document.getElementById("val-delta").innerText = b.delta + "%";
+  document.getElementById("bar-theta").style.width = b.theta + "%";
+  document.getElementById("val-theta").innerText = b.theta + "%";
+  document.getElementById("bar-alpha").style.width = b.alpha + "%";
+  document.getElementById("val-alpha").innerText = b.alpha + "%";
+  document.getElementById("bar-beta").style.width = b.beta + "%";
+  document.getElementById("val-beta").innerText = b.beta + "%";
+  document.getElementById("bar-gamma").style.width = b.gamma + "%";
+  document.getElementById("val-gamma").innerText = b.gamma + "%";
+}
+
+function logActuation(act) {
+  const feed = document.getElementById("log-feed");
+  const div = document.createElement("div");
+  div.className = "log-entry";
+  const timeStr = new Date().toTimeString().split(" ")[0];
+  div.innerHTML = `<span class="log-time">[${timeStr}]</span><span class="log-warn">STIM-TRIGGER: ${act.waveform} (${act.target_freq_hz}Hz @ ${act.intensity_mw_cm2}mW/cm²)</span>`;
+  feed.prepend(div);
+  if (feed.children.length > 20) feed.lastElementChild.remove();
+}
 
 function ingestFrame(channels) {
   for (let c = 0; c < CHANNELS; c++) {
