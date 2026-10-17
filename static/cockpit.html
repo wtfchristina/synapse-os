@@ -1,1 +1,639 @@
-../webapp/neuroforge_cockpit.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEUROFORGE // CLINICAL NEUROMODULATION DASHBOARD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #050811;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', monospace;
+      color: #94a3b8;
+      overflow-x: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      height: 56px;
+      background: #070b16;
+      border-bottom: 1px solid #1e2e4a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 20;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .logo-box {
+      width: 32px; height: 32px; border-radius: 6px;
+      border: 1px solid rgba(0, 242, 254, 0.5);
+      background: rgba(0, 242, 254, 0.1);
+      display: flex; align-items: center; justify-content: center;
+      color: #00f2fe; font-weight: bold;
+    }
+    .title-group h1 { font-size: 13px; font-weight: 700; color: #f8fafc; letter-spacing: 0.05em; }
+    .title-group p { font-size: 9px; color: #64748b; font-family: monospace; }
+    .badge {
+      display: inline-block; padding: 2px 6px; border-radius: 4px;
+      font-size: 9px; font-weight: 600; font-family: monospace;
+    }
+    .badge-cyan { background: rgba(0, 242, 254, 0.15); color: #00f2fe; border: 1px solid rgba(0, 242, 254, 0.3); }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-purple { background: rgba(168, 85, 247, 0.15); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.3); }
+    
+    .nav-bar { display: flex; gap: 6px; align-items: center; background: #0a0f1e; padding: 4px; border-radius: 6px; border: 1px solid #1e2e4a; }
+    .btn {
+      padding: 5px 10px; border-radius: 4px; font-size: 10px; font-weight: 700;
+      border: none; cursor: pointer; transition: all 0.15s ease; font-family: monospace;
+    }
+    .btn-active { background: #00f2fe; color: #050811; box-shadow: 0 0 10px rgba(0, 242, 254, 0.4); }
+    .btn-idle { background: transparent; color: #94a3b8; }
+    .btn-idle:hover { color: #f8fafc; background: #1e293b; }
+    .btn-action {
+      background: #00f2fe; color: #050811; font-weight: 800; font-size: 11px;
+      padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer;
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+    }
+    .btn-action:hover { background: #38bdf8; }
+
+    .main-layout {
+      flex: 1; display: grid; grid-template-columns: 290px 1fr 290px;
+      gap: 16px; padding: 16px; height: calc(100vh - 56px);
+    }
+    .hud-panel {
+      background: rgba(10, 15, 29, 0.88);
+      border: 1px solid rgba(30, 48, 77, 0.85);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      overflow-y: auto;
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #1e2e4a; padding-bottom: 8px;
+    }
+    .panel-header h2 { font-size: 11px; font-weight: 700; color: #f8fafc; text-transform: uppercase; letter-spacing: 0.06em; }
+    
+    .control-row { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+    .control-label { display: flex; justify-content: space-between; color: #94a3b8; }
+    .control-label strong { color: #00f2fe; font-family: monospace; }
+    input[type=range] { width: 100%; accent-color: #00f2fe; cursor: pointer; }
+
+    .viewport-container {
+      position: relative;
+      background: #03060c;
+      border: 1px solid #1e2e4a;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .viewport-top-hud {
+      position: absolute; top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 10; pointer-events: none;
+    }
+    .hud-chip {
+      background: rgba(5, 8, 17, 0.85); border: 1px solid rgba(0, 242, 254, 0.4);
+      padding: 4px 10px; border-radius: 4px; font-size: 10px; color: #00f2fe; font-family: monospace;
+      font-weight: 600;
+    }
+    .viewport-canvas {
+      flex: 1; display: flex; align-items: center; justify-content: center; position: relative;
+    }
+    .viewport-svg-center {
+      width: 100%; height: 100%; max-height: 540px;
+    }
+
+    .gauge-bar { width: 100%; height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; border: 1px solid #334155; }
+    .gauge-fill { height: 100%; background: #10b981; transition: width 0.2s; }
+    .event-log {
+      flex: 1; background: #050811; border: 1px solid #1e2e4a; border-radius: 6px;
+      padding: 8px; font-family: monospace; font-size: 9px; line-height: 1.5;
+      color: #64748b; overflow-y: auto; max-height: 160px;
+    }
+    .log-success { color: #10b981; }
+    .log-info { color: #00f2fe; }
+    .log-warn { color: #f59e0b; }
+
+    .carousel-bar {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; background: rgba(7, 11, 22, 0.9);
+      padding: 6px 12px; border-radius: 20px; border: 1px solid #1e2e4a;
+      z-index: 10;
+    }
+    .carousel-btn {
+      background: transparent; border: 1px solid transparent; color: #94a3b8;
+      padding: 4px 8px; border-radius: 12px; font-size: 9px; font-family: monospace;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .carousel-btn.active {
+      background: rgba(0, 242, 254, 0.2); border-color: #00f2fe; color: #00f2fe; font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="logo-box">◈</div>
+      <div class="title-group">
+        <h1>NEUROFORGE // 3D CLINICAL COCKPIT</h1>
+        <p>SYNAPSE-OS CLOSED-LOOP PRECISION NEUROMODULATION</p>
+      </div>
+      <span class="badge badge-cyan">v2.4 CLINICAL</span>
+      <span id="interlockBadge" class="badge badge-green">INTERLOCK: NOMINAL</span>
+    </div>
+
+    <div class="nav-bar">
+      <span style="font-size: 9px; color: #64748b; font-family: monospace; font-weight: bold;">PRESETS:</span>
+      <button class="btn btn-active preset-btn" data-preset="TRD">TRD (Area 25)</button>
+      <button class="btn btn-idle preset-btn" data-preset="OCD">Refractory OCD (ALIC)</button>
+      <button class="btn btn-idle preset-btn" data-preset="EPI">Epilepsy (Hippocampus)</button>
+    </div>
+
+    <div class="nav-bar">
+      <button class="btn btn-active view-btn" data-view="3d">3D HELMET</button>
+      <button class="btn btn-idle view-btn" data-view="mri">TRIPLANAR MRI</button>
+      <button class="btn btn-idle view-btn" data-view="nanomind">NANO-MIND</button>
+    </div>
+
+    <button id="dispatchPulse" class="btn-action">DISPATCH STIM PULSE</button>
+  </header>
+
+  <div class="main-layout">
+    
+    <!-- LEFT PANEL: TARGET & ABERRATION SOLVER -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      
+      <div class="hud-panel">
+        <div class="panel-header">
+          <h2>MNI STEREOTAXIC TARGET</h2>
+          <span id="targetNameBadge" class="badge badge-cyan">SCC (Brodmann 25)</span>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>X (Lateral):</span><strong id="valX">+6.0 mm</strong></div>
+          <input id="sliderX" type="range" min="-30" max="30" step="0.5" value="6.0">
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Y (Anterior):</span><strong id="valY">+2.5 mm</strong></div>
+          <input id="sliderY" type="range" min="-40" max="40" step="0.5" value="2.5">
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Z (Superior):</span><strong id="valZ">-4.0 mm</strong></div>
+          <input id="sliderZ" type="range" min="-35" max="35" step="0.5" value="-4.0">
+        </div>
+
+        <div style="border-top: 1px solid #1e2e4a; padding-top: 8px; font-size: 10px; display: flex; justify-content: space-between;">
+          <span style="color: #64748b;">Gated Channel:</span>
+          <strong id="gatedChannelLabel" style="color: #10b981; font-family: monospace;">TRPV4 (Mechanosensitive)</strong>
+        </div>
+      </div>
+
+      <div class="hud-panel" style="flex: 1;">
+        <div class="panel-header">
+          <h2>TFUS PHASE INVERSION</h2>
+          <span class="badge badge-purple">128-CH</span>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Skull Density Ratio (SDR):</span><strong id="valSDR">0.58</strong></div>
+          <input id="sliderSDR" type="range" min="0.30" max="0.80" step="0.01" value="0.58">
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Fundamental Freq (f):</span><strong id="valFreq">650 kHz</strong></div>
+          <input id="sliderFreq" type="range" min="250" max="1000" step="25" value="650">
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Peak Pressure:</span><strong id="valPressure">0.92 MPa</strong></div>
+          <input id="sliderPressure" type="range" min="0.10" max="2.50" step="0.02" value="0.92">
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Pulse Duration:</span><strong id="valDuration">250 ms</strong></div>
+          <input id="sliderDuration" type="range" min="50" max="1000" step="25" value="250">
+        </div>
+
+        <div style="margin-top: 4px; border-top: 1px solid #1e2e4a; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" checked id="toggleBeams"> Show 128 Acoustic Wavefront Beams
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" checked id="toggleParticles"> Show Nano-MIND Particle Cloud
+          </label>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- CENTER VIEWPORT -->
+    <div class="viewport-container">
+      <div class="viewport-top-hud">
+        <div class="hud-chip" id="viewportTitle">VIEWPORT: 3D CRANIAL TRANSDUCER ARRAY & FOCAL ACOUSTIC CONVERGENCE</div>
+        <div class="hud-chip" style="border-color: rgba(245, 158, 11, 0.4); color: #f59e0b;">
+          MNI: (<span id="tagX">+6.0</span>, <span id="tagY">+2.5</span>, <span id="tagZ">-4.0</span> mm)
+        </div>
+      </div>
+
+      <!-- CENTER VISUAL DISPLAY CANVAS -->
+      <div class="viewport-canvas" id="viewportCanvas">
+        
+        <!-- SVG RENDER: 3D CRANIAL HELMET & ACOUSTIC CONVERGENCE -->
+        <svg id="view3D" class="viewport-svg-center" viewBox="0 0 800 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="#050811" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="focalGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+              <stop offset="30%" stop-color="#00f2fe" stop-opacity="0.9"/>
+              <stop offset="70%" stop-color="#a855f7" stop-opacity="0.5"/>
+              <stop offset="100%" stop-color="#050811" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.8"/>
+              <stop offset="100%" stop-color="#a855f7" stop-opacity="0.1"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Background grid and glow -->
+          <rect width="800" height="520" fill="#03060c"/>
+          <circle cx="400" cy="260" r="260" fill="url(#bgGlow)"/>
+
+          <!-- Cranial Calvarium Outline -->
+          <ellipse cx="400" cy="250" rx="160" ry="190" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.35" stroke-dasharray="6 4"/>
+          <ellipse cx="400" cy="250" rx="140" ry="170" stroke="#3b82f6" stroke-width="1.5" stroke-opacity="0.2" fill="#081226" fill-opacity="0.6"/>
+
+          <!-- Brain Lobes Schematic -->
+          <path d="M400 100 C340 100 280 160 280 250 C280 320 330 380 380 400 C390 380 395 330 400 300 C405 330 410 380 420 400 C470 380 520 320 520 250 C520 160 460 100 400 100 Z" fill="#1e293b" fill-opacity="0.35" stroke="#60a5fa" stroke-width="1.5" stroke-opacity="0.4"/>
+          <!-- Longitudinal Fissure -->
+          <line x1="400" y1="100" x2="400" y2="400" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5" stroke-dasharray="4 2"/>
+
+          <!-- Transducer Array Helmet (Hemispheric Arch) -->
+          <path d="M200 280 C200 140 280 60 400 60 C520 60 600 140 600 280" stroke="#a855f7" stroke-width="6" stroke-linecap="round" stroke-opacity="0.6"/>
+          
+          <!-- 128 Transducer Beams Converging to Target -->
+          <g id="acousticBeamsGroup" opacity="0.75">
+            <!-- Radiating beams from helmet arch to focal point (400, 250) -->
+            <line x1="220" y1="250" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="240" y1="200" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="270" y1="150" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="310" y1="110" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="355" y1="80" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="400" y1="65" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="2"/>
+            <line x1="445" y1="80" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="490" y1="110" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="530" y1="150" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="560" y1="200" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+            <line x1="580" y1="250" x2="400" y2="260" stroke="url(#beamGrad)" stroke-width="1.5"/>
+          </g>
+
+          <!-- Transducer Emitter Nodes -->
+          <circle cx="220" cy="250" r="5" fill="#00f2fe"/>
+          <circle cx="240" cy="200" r="5" fill="#00f2fe"/>
+          <circle cx="270" cy="150" r="5" fill="#00f2fe"/>
+          <circle cx="310" cy="110" r="5" fill="#00f2fe"/>
+          <circle cx="355" cy="80" r="5" fill="#00f2fe"/>
+          <circle cx="400" cy="65" r="6" fill="#00f2fe"/>
+          <circle cx="445" cy="80" r="5" fill="#00f2fe"/>
+          <circle cx="490" cy="110" r="5" fill="#00f2fe"/>
+          <circle cx="530" cy="150" r="5" fill="#00f2fe"/>
+          <circle cx="560" cy="200" r="5" fill="#00f2fe"/>
+          <circle cx="580" cy="250" r="5" fill="#00f2fe"/>
+
+          <!-- Focal Spot & Caustics -->
+          <g id="focalReticleGroup" transform="translate(400, 260)">
+            <circle cx="0" cy="0" r="38" fill="url(#focalGlow)"/>
+            <circle cx="0" cy="0" r="26" stroke="#00f2fe" stroke-width="1.5" stroke-dasharray="4 2"/>
+            <circle cx="0" cy="0" r="14" stroke="#f59e0b" stroke-width="1"/>
+            <line x1="-30" y1="0" x2="30" y2="0" stroke="#00f2fe" stroke-width="1"/>
+            <line x1="0" y1="-30" x2="0" y2="30" stroke="#00f2fe" stroke-width="1"/>
+            <circle cx="0" cy="0" r="3" fill="#ffffff"/>
+          </g>
+
+          <!-- Nanoparticle Cloud Points -->
+          <g id="particleCloudGroup">
+            <circle cx="395" cy="255" r="1.8" fill="#a855f7" opacity="0.9"/>
+            <circle cx="405" cy="263" r="1.5" fill="#a855f7" opacity="0.8"/>
+            <circle cx="402" cy="252" r="2.0" fill="#00f2fe" opacity="0.9"/>
+            <circle cx="392" cy="266" r="1.6" fill="#f59e0b" opacity="0.85"/>
+            <circle cx="408" cy="258" r="1.7" fill="#a855f7" opacity="0.9"/>
+          </g>
+        </svg>
+
+        <!-- SVG RENDER: TRIPLANAR CLINICAL MRI -->
+        <svg id="viewMRI" class="viewport-svg-center" viewBox="0 0 800 520" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+          <rect width="800" height="520" fill="#020408"/>
+          
+          <!-- Tri-Planar Grid: Axial, Coronal, Sagittal -->
+          <!-- Panel 1: Axial -->
+          <g transform="translate(20, 40)">
+            <rect width="240" height="440" fill="#050811" stroke="#1e2e4a" rx="6"/>
+            <text x="16" y="28" fill="#00f2fe" font-size="11" font-family="monospace" font-weight="bold">AXIAL T1-CE</text>
+            <text x="16" y="44" fill="#64748b" font-size="9" font-family="monospace">Z = -4.0 mm</text>
+            <!-- Brain slice representation -->
+            <ellipse cx="120" cy="240" rx="80" ry="105" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+            <path d="M120 150 C95 180 90 260 120 310 C150 260 145 180 120 150" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+            <!-- Dosimetry Heatmap -->
+            <circle cx="126" cy="238" r="26" fill="#f59e0b" fill-opacity="0.45"/>
+            <circle cx="126" cy="238" r="14" fill="#ef4444" fill-opacity="0.65"/>
+            <!-- Crosshairs -->
+            <line x1="30" y1="238" x2="210" y2="238" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.8"/>
+            <line x1="126" y1="130" x2="126" y2="350" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.8"/>
+            <circle cx="126" cy="238" r="4" stroke="#ffffff" stroke-width="1" fill="none"/>
+          </g>
+
+          <!-- Panel 2: Coronal -->
+          <g transform="translate(280, 40)">
+            <rect width="240" height="440" fill="#050811" stroke="#1e2e4a" rx="6"/>
+            <text x="16" y="28" fill="#00f2fe" font-size="11" font-family="monospace" font-weight="bold">CORONAL T1-CE</text>
+            <text x="16" y="44" fill="#64748b" font-size="9" font-family="monospace">Y = +2.5 mm</text>
+            <path d="M120 140 C80 140 60 190 60 250 C60 310 90 340 120 340 C150 340 180 310 180 250 C180 190 160 140 120 140 Z" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+            <circle cx="126" cy="245" r="24" fill="#f59e0b" fill-opacity="0.45"/>
+            <circle cx="126" cy="245" r="12" fill="#ef4444" fill-opacity="0.65"/>
+            <line x1="30" y1="245" x2="210" y2="245" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.8"/>
+            <line x1="126" y1="140" x2="126" y2="350" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.8"/>
+            <circle cx="126" cy="245" r="4" stroke="#ffffff" stroke-width="1" fill="none"/>
+          </g>
+
+          <!-- Panel 3: Sagittal -->
+          <g transform="translate(540, 40)">
+            <rect width="240" height="440" fill="#050811" stroke="#1e2e4a" rx="6"/>
+            <text x="16" y="28" fill="#00f2fe" font-size="11" font-family="monospace" font-weight="bold">SAGITTAL T1-CE</text>
+            <text x="16" y="44" fill="#64748b" font-size="9" font-family="monospace">X = +6.0 mm</text>
+            <path d="M80 180 C80 140 120 130 160 150 C190 170 195 240 180 290 C160 330 130 340 110 330 C90 320 80 280 80 180 Z" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+            <circle cx="135" cy="245" r="22" fill="#f59e0b" fill-opacity="0.45"/>
+            <circle cx="135" cy="245" r="11" fill="#ef4444" fill-opacity="0.65"/>
+            <line x1="30" y1="245" x2="210" y2="245" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.8"/>
+            <line x1="135" y1="140" x2="135" y2="350" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.8"/>
+            <circle cx="135" cy="245" r="4" stroke="#ffffff" stroke-width="1" fill="none"/>
+          </g>
+        </svg>
+
+        <!-- SVG RENDER: NANO-MIND MECHANISM -->
+        <svg id="viewNano" class="viewport-svg-center" viewBox="0 0 800 520" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+          <rect width="800" height="520" fill="#03060c"/>
+          <!-- Cell Membrane -->
+          <path d="M100 320 Q400 280 700 320" stroke="#00f2fe" stroke-width="12" stroke-linecap="round" stroke-opacity="0.4"/>
+          <path d="M100 350 Q400 310 700 350" stroke="#38bdf8" stroke-width="12" stroke-linecap="round" stroke-opacity="0.3"/>
+          
+          <!-- Mechanosensitive Ion Channel (TRPV4) -->
+          <rect x="370" y="260" width="60" height="120" rx="10" fill="#1e293b" stroke="#00f2fe" stroke-width="2"/>
+          <text x="380" y="325" fill="#00f2fe" font-size="10" font-family="monospace" font-weight="bold">TRPV4</text>
+
+          <!-- Magnetic Torque Nanoparticle -->
+          <circle cx="400" cy="180" r="34" fill="#475569" stroke="#a855f7" stroke-width="4"/>
+          <circle cx="400" cy="180" r="26" fill="#334155" stroke="#f59e0b" stroke-width="2"/>
+          <text x="378" y="184" fill="#ffffff" font-size="9" font-family="monospace" font-weight="bold">m-Torque</text>
+
+          <!-- Tether Filament -->
+          <line x1="400" y1="214" x2="400" y2="260" stroke="#f59e0b" stroke-width="3" stroke-dasharray="4 2"/>
+
+          <!-- Magnetic Field Lines -->
+          <path d="M320 140 C350 90 450 90 480 140" stroke="#a855f7" stroke-width="2" stroke-dasharray="6 4" fill="none"/>
+          <path d="M300 160 C340 70 460 70 500 160" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="6 4" fill="none"/>
+
+          <!-- Calcium Ion Influx -->
+          <circle cx="400" cy="390" r="6" fill="#f59e0b"/>
+          <text x="412" y="394" fill="#fde047" font-size="10" font-family="monospace">Ca2+ Influx</text>
+          <circle cx="385" cy="420" r="5" fill="#f59e0b"/>
+          <circle cx="415" cy="430" r="5" fill="#f59e0b"/>
+
+          <text x="50" y="60" fill="#00f2fe" font-size="13" font-family="monospace" font-weight="bold">NANO-MIND // MAGNETOGENETIC ION CHANNEL GATING</text>
+          <text x="50" y="80" fill="#94a3b8" font-size="10" font-family="monospace">Superparamagnetic m-Torque actuation of mechanosensitive TRPV4 channels</text>
+        </svg>
+
+      </div>
+
+      <!-- Quick Switch Bar -->
+      <div class="carousel-bar">
+        <button class="carousel-btn active" data-target="3d">🧠 3D HELMET</button>
+        <button class="carousel-btn" data-target="mri">🔬 TRIPLANAR MRI</button>
+        <button class="carousel-btn" data-target="nanomind">⚡ NANO-MIND</button>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: DOSIMETRY & TELEMETRY -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      
+      <div class="hud-panel">
+        <div class="panel-header">
+          <h2>SAFETY BIO-DOSIMETRY</h2>
+          <span style="font-size: 9px; color: #64748b; font-family: monospace;">FDA / IEC 62304</span>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Mechanical Index (MI):</span><strong id="valMI">1.14 / 1.90 MAX</strong></div>
+          <div class="gauge-bar"><div id="barMI" class="gauge-fill" style="width: 60%;"></div></div>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Thermal Rise (&Delta;T):</span><strong id="valDT">+0.00&deg;C / 0.50&deg;C MAX</strong></div>
+          <div class="gauge-bar"><div id="barDT" class="gauge-fill" style="width: 1%; background: #00f2fe;"></div></div>
+        </div>
+
+        <div style="border-top: 1px solid #1e2e4a; padding-top: 8px; font-size: 10px; display: flex; justify-content: space-between;">
+          <span style="color: #64748b;">Acoustic Cavitation:</span>
+          <strong id="cavitationLabel" style="color: #10b981; font-family: monospace;">STABLE // SUB-INERTIAL</strong>
+        </div>
+      </div>
+
+      <div class="hud-panel">
+        <div class="panel-header">
+          <h2>NANO-MIND ACTUATOR</h2>
+          <span class="badge badge-cyan">MAGNETO-TORQUE</span>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label"><span>Magnetic Flux:</span><strong id="valFlux">120 mT</strong></div>
+          <input id="sliderFlux" type="range" min="10" max="450" step="5" value="120">
+        </div>
+
+        <div style="border-top: 1px solid #1e2e4a; padding-top: 8px; font-size: 10px; display: flex; justify-content: space-between;">
+          <span style="color: #64748b;">Channel Open Prob:</span>
+          <strong id="probLabel" style="color: #00f2fe; font-family: monospace;">69.6%</strong>
+        </div>
+      </div>
+
+      <div class="hud-panel" style="flex: 1;">
+        <div class="panel-header">
+          <h2>EVENT STREAM & AUDIT</h2>
+          <span style="font-size: 9px; color: #64748b; font-family: monospace;">ISO-13485</span>
+        </div>
+        <div class="event-log" id="eventLog">
+          <div class="log-success">[INIT] Multi-modal Clinical Dashboard active.</div>
+          <div class="log-info">[READY] Stereotaxic target: SCC (Brodmann 25).</div>
+          <div class="log-info">[CALIB] 128 transducer array delays aligned.</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    const PRESETS = {
+      TRD: { name: 'SCC (Brodmann 25)', x: 6.0, y: 2.5, z: -4.0, sdr: 0.58, freq: 650, p: 0.92, dur: 250, flux: 120, receptor: 'TRPV4 (Mechanosensitive)' },
+      OCD: { name: 'ALIC / Striatum', x: 14.0, y: 10.0, z: 2.0, sdr: 0.62, freq: 700, p: 1.05, dur: 300, flux: 150, receptor: 'PIEZO1 (Sono-Mechanic)' },
+      EPI: { name: 'Mesial Hippocampus', x: 24.0, y: -18.0, z: -16.0, sdr: 0.54, freq: 600, p: 0.85, dur: 200, flux: 90, receptor: 'TREK-1 (Inhibitory Gating)' }
+    };
+
+    let curTarget = { ...PRESETS.TRD };
+
+    function logEvent(msg, type='info') {
+      const el = document.createElement('div');
+      const time = new Date().toISOString().substring(11, 19);
+      el.className = type === 'success' ? 'log-success' : type === 'warn' ? 'log-warn' : 'log-info';
+      el.textContent = ;
+      const log = document.getElementById('eventLog');
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function switchView(view) {
+      document.getElementById('view3D').style.display = view === '3d' ? 'block' : 'none';
+      document.getElementById('viewMRI').style.display = view === 'mri' ? 'block' : 'none';
+      document.getElementById('viewNano').style.display = view === 'nanomind' ? 'block' : 'none';
+
+      document.querySelectorAll('.view-btn').forEach(b => {
+        b.className = b.dataset.view === view ? 'btn btn-active view-btn' : 'btn btn-idle view-btn';
+      });
+      document.querySelectorAll('.carousel-btn').forEach(b => {
+        b.className = b.dataset.target === view ? 'carousel-btn active' : 'carousel-btn';
+      });
+
+      const titleMap = {
+        '3d': 'VIEWPORT: 3D CRANIAL TRANSDUCER ARRAY & FOCAL ACOUSTIC CONVERGENCE',
+        'mri': 'VIEWPORT: TRIPLANAR T1-CONTRAST MRI [AXIAL • CORONAL • SAGITTAL]',
+        'nanomind': 'VIEWPORT: NANO-MIND MAGNETOGENESIS - TRPV4 CHANNEL GATING'
+      };
+      document.getElementById('viewportTitle').textContent = titleMap[view] || 'VIEWPORT: CLINICAL WORKSTATION';
+      logEvent();
+    }
+
+    function updateDosimetry() {
+      const freqMhz = parseFloat(document.getElementById('sliderFreq').value) / 1000.0;
+      const p = parseFloat(document.getElementById('sliderPressure').value);
+      const dur = parseFloat(document.getElementById('sliderDuration').value) / 1000.0;
+      const sdr = parseFloat(document.getElementById('sliderSDR').value);
+
+      const mi = p / Math.sqrt(freqMhz);
+      const dt = (p * p) * 0.0022 * dur * (1.2 - sdr);
+
+      document.getElementById('valMI').textContent = ;
+      document.getElementById('barMI').style.width = ;
+
+      document.getElementById('valDT').textContent = ;
+      document.getElementById('barDT').style.width = ;
+
+      const flux = parseInt(document.getElementById('sliderFlux').value);
+      const prob = 100 / (1 + Math.exp(-(flux - 90) / 35));
+      document.getElementById('probLabel').textContent = ;
+
+      const interlock = document.getElementById('interlockBadge');
+      if (mi >= 1.90 || dt >= 0.50) {
+        interlock.className = 'badge';
+        interlock.style.background = 'rgba(239, 68, 68, 0.2)';
+        interlock.style.color = '#ef4444';
+        interlock.textContent = 'INTERLOCK: CLAMPED';
+      } else {
+        interlock.className = 'badge badge-green';
+        interlock.textContent = 'INTERLOCK: NOMINAL';
+      }
+    }
+
+    function updateTarget() {
+      const x = parseFloat(document.getElementById('sliderX').value);
+      const y = parseFloat(document.getElementById('sliderY').value);
+      const z = parseFloat(document.getElementById('sliderZ').value);
+
+      document.getElementById('valX').textContent = ;
+      document.getElementById('valY').textContent = ;
+      document.getElementById('valZ').textContent = ;
+
+      document.getElementById('tagX').textContent = ;
+      document.getElementById('tagY').textContent = ;
+      document.getElementById('tagZ').textContent = ;
+
+      // Move SVG reticle
+      const reticle = document.getElementById('focalReticleGroup');
+      if (reticle) {
+        reticle.setAttribute('transform', );
+      }
+    }
+
+    // Wire up events
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = PRESETS[btn.dataset.preset];
+        if (!p) return;
+        document.querySelectorAll('.preset-btn').forEach(b => b.className = 'btn btn-idle preset-btn');
+        btn.className = 'btn btn-active preset-btn';
+
+        document.getElementById('targetNameBadge').textContent = p.name;
+        document.getElementById('sliderX').value = p.x;
+        document.getElementById('sliderY').value = p.y;
+        document.getElementById('sliderZ').value = p.z;
+        document.getElementById('sliderSDR').value = p.sdr;
+        document.getElementById('sliderFreq').value = p.freq;
+        document.getElementById('sliderPressure').value = p.p;
+        document.getElementById('sliderDuration').value = p.dur;
+        document.getElementById('sliderFlux').value = p.flux;
+        document.getElementById('gatedChannelLabel').textContent = p.receptor;
+
+        document.getElementById('valSDR').textContent = p.sdr.toFixed(2);
+        document.getElementById('valFreq').textContent = ;
+        document.getElementById('valPressure').textContent = ;
+        document.getElementById('valDuration').textContent = ;
+        document.getElementById('valFlux').textContent = ;
+
+        updateTarget();
+        updateDosimetry();
+        logEvent(, 'success');
+      });
+    });
+
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
+    document.querySelectorAll('.carousel-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.target));
+    });
+
+    ['sliderX', 'sliderY', 'sliderZ'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateTarget);
+    });
+
+    ['sliderSDR', 'sliderFreq', 'sliderPressure', 'sliderDuration', 'sliderFlux'].forEach(id => {
+      document.getElementById(id).addEventListener('input', () => {
+        document.getElementById('valSDR').textContent = parseFloat(document.getElementById('sliderSDR').value).toFixed(2);
+        document.getElementById('valFreq').textContent = ;
+        document.getElementById('valPressure').textContent = ;
+        document.getElementById('valDuration').textContent = ;
+        document.getElementById('valFlux').textContent = ;
+        updateDosimetry();
+      });
+    });
+
+    document.getElementById('dispatchPulse').addEventListener('click', () => {
+      logEvent('DISPATCH: Transcranial ultrasonic stimulus pulse delivered.', 'success');
+    });
+
+    updateTarget();
+    updateDosimetry();
+  </script>
+</body>
+</html>
