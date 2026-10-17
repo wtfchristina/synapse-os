@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/assets/quantum_neuroscience_hero.png" alt="Quantum Neuroscience // SYNAPSE-OS" width="100%" style="border-radius: 6px;" />
+</p>
+
 # SYNAPSE-OS
 
 Deterministic 1,000 Hz zero-copy neural telemetry and dynamical phase-space visualization engine for next-generation Brain-Computer Interfaces (BCIs) and neurostimulation hardware.
