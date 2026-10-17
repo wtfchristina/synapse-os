@@ -1,52 +1,78 @@
-import os
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import asyncio
 import json
 import websockets
 import numpy as np
-from core.synapse_dsp import SynapseDSP
-from neuromod.precision_actuator import PrecisionActuator
+from synapse_dsp import NativeBiquadCascade
 
-dsp = SynapseDSP(sample_rate=1000.0)
-actuator = PrecisionActuator(target_frequency_hz=40.0)
+# 16-channel, 1,000 Hz setup
+NUM_CHANNELS = 16
+SAMPLING_RATE_HZ = 1000.0
+PORT = 8766
 
-async def stream_handler(websocket):
-    phase = 0.0
-    history_window = []
+# Standard 4th-order Butterworth bandpass (8–30 Hz sensorimotor Mu/Beta isolation)
+SOS_COEFFS = [
+    [0.0055,  0.0110, 0.0055, -1.8890, 0.8920],
+    [1.0000, -2.0000, 1.0000, -1.9310, 0.9350]
+]
+
+# Instantiate native C99 filter cascade
+filter_cascade = NativeBiquadCascade(num_channels=NUM_CHANNELS, coefficients=SOS_COEFFS)
+
+# Pre-allocated float32 frame buffers for zero-allocation streaming
+raw_frame = np.zeros(NUM_CHANNELS, dtype=np.float32)
+filtered_frame = np.zeros(NUM_CHANNELS, dtype=np.float32)
+
+connected_clients = set()
+
+async def telemetry_broadcaster():
+    """
+    Simulates real-time 1,000 Hz biosignal acquisition, runs C-accelerated
+    filtering, and broadcasts to connected WebGL/cockpit frontends.
+    """
+    t = 0.0
+    dt = 1.0 / SAMPLING_RATE_HZ
+
+    while True:
+        # Synthetic 16-channel biosignal: 10 Hz Alpha wave + 60 Hz line noise + Gaussian noise
+        alpha_wave = np.sin(2.0 * np.pi * 10.0 * t)
+        mains_noise = 0.5 * np.sin(2.0 * np.pi * 60.0 * t)
+        noise = np.random.normal(0.0, 0.2, NUM_CHANNELS).astype(np.float32)
+
+        raw_frame[:] = (alpha_wave + mains_noise) + noise
+
+        # Execute C-accelerated zero-copy filtering
+        filter_cascade.process_sample(raw_frame, out_frame=filtered_frame)
+
+        # Broadcast frame payload if clients are connected
+        if connected_clients:
+            payload = json.dumps({
+                "timestamp_ms": round(t * 1000.0, 3),
+                "raw": raw_frame.tolist(),
+                "filtered": filtered_frame.tolist(),
+            })
+            await asyncio.gather(
+                *[client.send(payload) for client in connected_clients],
+                return_exceptions=True
+            )
+
+        t += dt
+        await asyncio.sleep(dt)
+
+async def handler(websocket):
+    connected_clients.add(websocket)
     try:
-        while True:
-            phase += 0.05
-            raw_frame = [
-                float(np.sin(phase * (1.0 + ch * 0.2)) * 30.0 + np.random.normal(0, 3.0))
-                for ch in range(16)
-            ]
-            filtered_frame = dsp.process_frame(raw_frame)
-            history_window.append(filtered_frame[0])
-            if len(history_window) > 256:
-                history_window.pop(0)
-            
-            band_powers = dsp.compute_band_powers(history_window)
-            x_coord = float(filtered_frame[0])
-            v_coord = float(np.cos(phase) * 25.0)
-            stim_feedback = actuator.evaluate_neural_feedback(band_powers, v_coord)
-            
-            payload = {
-                "timestamp": asyncio.get_event_loop().time(),
-                "channels": filtered_frame,
-                "attractor": {"x": x_coord, "v": v_coord},
-                "bands": band_powers,
-                "actuator": stim_feedback
-            }
-            await websocket.send(json.dumps(payload))
-            await asyncio.sleep(0.001)
-    except websockets.ConnectionClosed:
-        pass
+        await websocket.wait_closed()
+    finally:
+        connected_clients.remove(websocket)
 
 async def main():
-    async with websockets.serve(stream_handler, "0.0.0.0", 8766):
-        print("[*] SYNAPSE-OS Q-Nexus Bridge live on ws://0.0.0.0:8766")
-        await asyncio.Future()
+    async with websockets.serve(handler, "localhost", PORT):
+        print(f"[SYNAPSE-OS] Telemetry bridge listening on ws://localhost:{PORT}")
+        print(f"[SYNAPSE-OS] Deterministic C-pipeline active ({NUM_CHANNELS} channels @ {SAMPLING_RATE_HZ:.0f} Hz)")
+        await telemetry_broadcaster()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n[SYNAPSE-OS] Bridge terminated.")
